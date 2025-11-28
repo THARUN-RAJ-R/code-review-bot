@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Admin - Code Review Bot</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .stat { display:inline-block; margin-right:20px; }
+    .bar { background:#eee; border-radius:6px; padding:4px; margin:6px 0; }
+    .bar > span { display:inline-block; background:#3b82f6; height:14px; border-radius:6px; }
+  </style>
+</head>
+<body>
+  <h1>Admin Dashboard</h1>
+  <div>
+    <div class="stat"><strong>Reviews (24h):</strong> {{ total_reviews }}</div>
+    <div class="stat"><strong>Avg response (s):</strong> {{ avg_response }}</div>
+    <div class="stat"><strong>Avg API latency (s):</strong> {{ avg_api_latency }}</div>
+  </div>
+
+  <h2>Language breakdown</h2>
+  <ul>
+    {% for g in lang_groups %}
+      <li>{{ g._id }} : {{ g.count }}</li>
+    {% endfor %}
+  </ul>
+
+  <h2>Top issues</h2>
+  <ul>
+    {% for it in top_issues %}
+      <li>{{ it._id }}  {{ it.count }}</li>
+    {% endfor %}
+  </ul>
+</body>
+</html>
