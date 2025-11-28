@@ -5,7 +5,7 @@ from textwrap import dedent
 import requests
 from requests.exceptions import RequestException
 
-HF_BASE = "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-7B-Instruct"
+HF_BASE = "https://router.huggingface.co/inference/text-generation?model=Qwen/Qwen2.5-7B-Instruct"
 
 
 def build_prompt(code: str, language: str = "unknown") -> str:
