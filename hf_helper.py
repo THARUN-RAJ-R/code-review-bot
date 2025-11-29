@@ -5,7 +5,8 @@ from textwrap import dedent
 import requests
 from requests.exceptions import RequestException
 
-HF_BASE = "https://router.huggingface.co/inference/text-generation?model=Qwen/Qwen2.5-7B-Instruct"
+# Use the Groq OpenAI-compatible chat completions endpoint
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
 def build_prompt(code: str, language: str = "unknown") -> str:
@@ -15,7 +16,10 @@ def build_prompt(code: str, language: str = "unknown") -> str:
         - issues: array of objects with keys: line (int or null), severity (critical|warning|info), issue (short string), suggestion (short string)
         - summary: a one-line summary of the main problems
         - explanation: plain-language explanation of the problems and recommended fixes
+        - time_complexity: a short string describing overall time complexity (e.g., "O(n)")
+        - space_complexity: a short string describing overall space complexity (e.g., "O(1)")
         - optimized_code: (optional) an improved or fixed code snippet when appropriate
+        - corrected_code: a complete, corrected version of the code that incorporates all recommended fixes and best practices
         - learning_links: array of strings with useful docs/links (optional)
 
         LANGUAGE: {language}
@@ -29,39 +33,54 @@ def build_prompt(code: str, language: str = "unknown") -> str:
 
 
 def call_qwen_inference(prompt: str, timeout: int = 120) -> str:
-    """Call the Qwen2.5-7B-Instruct model via Hugging Face Inference API.
+    """Call Groq via OpenAI-compatible chat API.
 
-    Reads HF_API_TOKEN at call time so that .env / environment is already loaded
-    by the Flask app.
+    We expect the model to return a string that is *JSON text* according to
+    the schema described in `build_prompt`. `app.py` will then json.loads it.
     """
-    hf_token = os.getenv("HF_API_TOKEN")
-    if not hf_token:
-        raise RuntimeError("HF_API_TOKEN not set in environment")
+    # Read Groq API key from env
+    groq_token = os.getenv("GROQ_API_KEY") or os.getenv("GROQ_API_TOKEN") or os.getenv("GROQ_API_KEY_DEV")
+    if not groq_token:
+        raise RuntimeError("GROQ_API_KEY/GROQ_API_TOKEN not set in environment")
 
-    headers = {"Authorization": f"Bearer {hf_token}"}
+    headers = {
+        "Authorization": f"Bearer {groq_token}",
+        "Content-Type": "application/json",
+    }
+
+    system_prompt = (
+        "You are an expert senior software engineer acting as a strict code review bot. "
+        "You must ALWAYS respond with STRICT, valid JSON only (no explanations, no markdown). "
+        "The JSON must match the schema described in the user message."
+    )
 
     payload = {
-        "inputs": prompt,
-        "parameters": {"max_new_tokens": 512, "temperature": 0.0},
+        "model": "llama-3.1-8b-instant",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.0,
+        "max_tokens": 512,
     }
 
     try:
-        resp = requests.post(HF_BASE, headers=headers, json=payload, timeout=timeout)
+        resp = requests.post(GROQ_URL, headers=headers, json=payload, timeout=timeout)
     except RequestException as e:
         # Network or request-level error: return a JSON string so the caller can log it
         return json.dumps({"error": "request_failed", "detail": str(e)})
 
     if resp.status_code != 200:
         return json.dumps(
-            {"error": f"HF returned {resp.status_code}", "detail": resp.text}
+            {"error": f"Groq returned {resp.status_code}", "detail": resp.text}
         )
 
     try:
         data = resp.json()
-        if isinstance(data, dict) and "generated_text" in data:
-            return data["generated_text"]
-        if isinstance(data, list) and len(data) > 0 and "generated_text" in data[0]:
-            return data[0]["generated_text"]
-        return resp.text
-    except ValueError:
+        # OpenAI-compatible schema: choices[0].message.content
+        content = data["choices"][0]["message"]["content"]
+        # This should already be JSON text according to our prompt
+        return content
+    except Exception:
+        # If format is unexpected, fall back to raw body so caller can log it
         return resp.text
